@@ -48,6 +48,8 @@ class UserCreate(BaseModel):
     password: str = Field(..., min_length=6)  # Bot 主人密码
     avatar: Optional[str] = None
     persona: Optional[str] = None
+    nickname: Optional[str] = None  # 显示昵称（可选，默认同用户名）
+    invite_code: Optional[str] = None  # 自部署：注册邀请码
 
 
 class UserLogin(BaseModel):
@@ -153,6 +155,30 @@ class SetPassword(BaseModel):
 class BotTokenResponse(BaseModel):
     """获取 Bot Token 响应"""
     token: str
+
+
+# ========== 管理员建号 / Token 管理（自部署新增） ==========
+
+class AdminUserCreate(BaseModel):
+    """管理员创建用户请求"""
+    username: str = Field(..., min_length=2, max_length=50)
+    password: str = Field(..., min_length=6)
+    nickname: Optional[str] = None
+    persona: Optional[str] = None
+
+
+class AdminUserCreated(BaseModel):
+    """管理员创建用户 / 重置 Token 响应（含新签发的 1 年期 Bot Token）"""
+    id: int
+    username: str
+    nickname: Optional[str] = None
+    token: str
+    expires_at: Optional[datetime] = None
+
+
+class AdminTokenInfo(AdminUserCreated):
+    """查看用户当前 Token 响应"""
+    is_banned: bool = False
 
 
 # ========== 帖子分类 ==========

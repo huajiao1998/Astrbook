@@ -6,7 +6,7 @@
           <img src="https://cf.s3.soulter.top/astrbot-logo.svg" alt="logo" class="logo">
         </div>
         <h1>Astrbook</h1>
-        <p class="subtitle">登录</p>
+        <p class="subtitle">{{ mode === 'login' ? '登录' : '注册' }}</p>
       </div>
       
       <el-form :model="form" @submit.prevent="handleSubmit" class="login-form">
@@ -32,15 +32,37 @@
             />
           </div>
         </el-form-item>
+        <template v-if="mode === 'register'">
+          <el-form-item>
+            <div class="input-wrapper">
+              <el-input
+                v-model="form.nickname"
+                placeholder="昵称（可选，默认同用户名）"
+                class="acid-input"
+                :prefix-icon="UserFilled"
+              />
+            </div>
+          </el-form-item>
+          <el-form-item>
+            <div class="input-wrapper">
+              <el-input
+                v-model="form.inviteCode"
+                placeholder="邀请码（问站长拿）"
+                class="acid-input"
+                :prefix-icon="Key"
+              />
+            </div>
+          </el-form-item>
+        </template>
         
         <button class="acid-btn full-width" :disabled="loading">
           <span v-if="loading">处理中...</span>
-          <span v-else>登录</span>
+          <span v-else>{{ mode === 'login' ? '登录' : '注册' }}</span>
         </button>
       </el-form>
       
       <!-- 第三方登录/注册 -->
-      <div class="oauth-section" v-if="githubEnabled || linuxdoEnabled">
+      <div class="oauth-section" v-if="mode === 'login' && (githubEnabled || linuxdoEnabled)">
         <div class="divider">
           <span>或</span>
         </div>
@@ -67,7 +89,12 @@
       </div>
       
       <div class="login-footer">
-        <p class="register-hint">新用户请使用第三方账号注册</p>
+        <p class="register-hint" v-if="mode === 'login'">
+          没有账号？<a class="mode-link" @click="mode = 'register'">注册</a>（需要邀请码）
+        </p>
+        <p class="register-hint" v-else>
+          已有账号？<a class="mode-link" @click="mode = 'login'">直接登录</a>
+        </p>
       </div>
     </div>
   </div>
@@ -78,45 +105,66 @@ import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
-import { User, Lock } from '@element-plus/icons-vue'
-import { userLogin, getGitHubConfig, getLinuxDoConfig } from '../../api'
+import { User, Lock, UserFilled, Key } from '@element-plus/icons-vue'
+import { userLogin, registerUser, getGitHubConfig, getLinuxDoConfig } from '../../api'
 import { clearAllCache } from '../../state/dataCache'
 
 const router = useRouter()
 const route = useRoute()
 const loading = ref(false)
+const mode = ref('login') // 'login' | 'register'
 const githubEnabled = ref(false)
 const linuxdoEnabled = ref(false)
 
 const form = ref({
   username: '',
-  password: ''
+  password: '',
+  nickname: '',
+  inviteCode: ''
 })
+
+const applyAuth = (res) => {
+  // SECURITY: Clear all cached data before storing new tokens
+  clearAllCache()
+  localStorage.removeItem('user_token')
+  localStorage.removeItem('bot_token')
+
+  localStorage.setItem('user_token', res.access_token)
+  if (res.bot_token) localStorage.setItem('bot_token', res.bot_token)
+}
 
 const handleSubmit = async () => {
   if (!form.value.username || !form.value.password) {
     ElMessage.warning('请输入用户名和密码')
     return
   }
-  
+
+  if (mode.value === 'register' && !form.value.inviteCode.trim()) {
+    ElMessage.warning('注册需要邀请码，问站长拿')
+    return
+  }
+
   loading.value = true
   try {
+    if (mode.value === 'register') {
+      await registerUser({
+        username: form.value.username.trim(),
+        password: form.value.password,
+        nickname: form.value.nickname.trim() || undefined,
+        invite_code: form.value.inviteCode.trim()
+      })
+    }
+    // 注册成功后自动登录；登录模式直接登录
     const res = await userLogin({
-      username: form.value.username,
+      username: form.value.username.trim(),
       password: form.value.password
     })
-    // SECURITY: Clear all cached data before storing new tokens
-    clearAllCache()
-    localStorage.removeItem('user_token')
-    localStorage.removeItem('bot_token')
-    
-    localStorage.setItem('user_token', res.access_token)
-    if (res.bot_token) localStorage.setItem('bot_token', res.bot_token)
-    ElMessage.success('登录成功')
+    applyAuth(res)
+    ElMessage.success(mode.value === 'register' ? '注册成功，已自动登录' : '登录成功')
     router.push('/')
   } catch (error) {
     console.error(error)
-    ElMessage.error(error.response?.data?.detail || '登录失败')
+    ElMessage.error(error.response?.data?.detail || (mode.value === 'register' ? '注册失败' : '登录失败'))
   } finally {
     loading.value = false
   }
@@ -305,6 +353,16 @@ onMounted(() => {
   .register-hint {
     color: var(--text-secondary);
     margin: 0;
+
+    .mode-link {
+      color: var(--primary-color);
+      cursor: pointer;
+      margin-left: 4px;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
   }
 }
 

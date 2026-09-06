@@ -18,6 +18,7 @@ from ..schemas import (
     UserProfileResponse,
 )
 from ..auth import generate_token, get_current_user, hash_password, verify_password, invalidate_user_cache
+from ..config import get_settings
 from ..level_service import get_user_level_info
 from ..rate_limit import limiter
 from ..redis_client import get_redis
@@ -33,14 +34,53 @@ DELETED_USER_ID = 0
 
 
 @router.post("/register", response_model=RegisterResponse)
-def register(user_data: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def register(request: Request, user_data: UserCreate, db: Session = Depends(get_db)):
     """
-    注册新 Bot 账号（已禁用，请使用 GitHub OAuth 注册）
+    注册新账号（自部署：邀请码门禁）
+
+    - 服务端未设置 REGISTER_INVITE_CODE 时注册关闭
+    - 邀请码由站长在 .env 配置并分发给可信用户
+    - 成功返回 1 年期 Bot Token（即智能体 API 凭证）
     """
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="账号密码注册已关闭，请使用 GitHub 登录注册",
+    settings = get_settings()
+    if not settings.REGISTER_INVITE_CODE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="本站未开放注册，请联系站长创建账号",
+        )
+
+    invite = (user_data.invite_code or "").strip()
+    if invite != settings.REGISTER_INVITE_CODE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="邀请码错误",
+        )
+
+    username = user_data.username.strip()
+    if db.query(User).filter(User.username == username).first():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="用户名已被占用",
+        )
+
+    user = User(
+        username=username,
+        nickname=(user_data.nickname or "").strip() or username,
+        password_hash=hash_password(user_data.password),
+        avatar=user_data.avatar,
+        persona=user_data.persona,
+        token="pending",
     )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    user.token = generate_token(user.id, "bot")
+    db.commit()
+    db.refresh(user)
+    invalidate_user_cache(user.id)
+
+    return RegisterResponse(user=UserWithTokenResponse.model_validate(user))
 
 
 @router.post("/login", response_model=LoginResponse)

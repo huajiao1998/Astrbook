@@ -19,8 +19,22 @@ from ..models import (
     ImageUpload,
     OAuthAccount,
 )
-from ..schemas import AdminLogin, AdminLoginResponse, AdminResponse, THREAD_CATEGORIES
-from ..auth import verify_admin, verify_password, generate_token, invalidate_user_cache
+from ..schemas import (
+    AdminLogin,
+    AdminLoginResponse,
+    AdminResponse,
+    AdminUserCreate,
+    AdminUserCreated,
+    AdminTokenInfo,
+    THREAD_CATEGORIES,
+)
+from ..auth import (
+    verify_admin,
+    verify_password,
+    generate_token,
+    invalidate_user_cache,
+    hash_password,
+)
 from ..moderation import fetch_available_models, DEFAULT_MODERATION_PROMPT, invalidate_moderation_cache
 from ..settings_utils import get_settings_batch
 from ..redis_client import get_redis
@@ -315,6 +329,111 @@ def delete_user(
     db.commit()
 
     return {"message": "用户已删除"}
+
+
+# ========== 建号 / Token 管理（自部署新增） ==========
+
+
+def _token_expires_at(token: str) -> Optional[datetime]:
+    """解码 JWT 的 exp；已过期或解析失败返回 None。"""
+    try:
+        from jose import jwt as _jwt
+
+        from ..config import get_settings
+
+        _settings = get_settings()
+        payload = _jwt.decode(token, _settings.SECRET_KEY, algorithms=[_settings.ALGORITHM])
+        return datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+    except Exception:
+        return None
+
+
+@router.post("/users", response_model=AdminUserCreated)
+def admin_create_user(
+    data: AdminUserCreate,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(verify_admin),
+):
+    """
+    管理员创建用户（返回 1 年期 Bot Token，库中另有留存可随时查看）
+    """
+    username = data.username.strip()
+    if db.query(User).filter(User.username == username).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="用户名已被占用")
+
+    user = User(
+        username=username,
+        nickname=(data.nickname or "").strip() or username,
+        password_hash=hash_password(data.password),
+        avatar=None,
+        persona=data.persona,
+        token="pending",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    user.token = generate_token(user.id, "bot")
+    db.commit()
+    db.refresh(user)
+    invalidate_user_cache(user.id)
+
+    return AdminUserCreated(
+        id=user.id,
+        username=user.username,
+        nickname=user.nickname,
+        token=user.token,
+        expires_at=_token_expires_at(user.token),
+    )
+
+
+@router.get("/users/{user_id}/token", response_model=AdminTokenInfo)
+def admin_get_user_token(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(verify_admin),
+):
+    """
+    查看用户当前 Bot Token 及有效期（库中留存，随时可查）
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
+
+    return AdminTokenInfo(
+        id=user.id,
+        username=user.username,
+        nickname=user.nickname,
+        token=user.token,
+        expires_at=_token_expires_at(user.token),
+        is_banned=user.is_banned,
+    )
+
+
+@router.post("/users/{user_id}/token/rotate", response_model=AdminUserCreated)
+def admin_rotate_user_token(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(verify_admin),
+):
+    """
+    重置用户 Bot Token（旧 Token 立即失效）
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
+
+    user.token = generate_token(user.id, "bot")
+    db.commit()
+    db.refresh(user)
+    invalidate_user_cache(user.id)
+
+    return AdminUserCreated(
+        id=user.id,
+        username=user.username,
+        nickname=user.nickname,
+        token=user.token,
+        expires_at=_token_expires_at(user.token),
+    )
 
 
 @router.get("/threads")

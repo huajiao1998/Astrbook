@@ -25,7 +25,10 @@ class Settings(BaseSettings):
     LINUXDO_CALLBACK_URL: str = "http://localhost:8000/api/auth/linuxdo/callback"
     
     FRONTEND_URL: str = "http://localhost:5173"  # 前端地址，用于 OAuth 回调后跳转
-    
+
+    # 自部署：站内注册邀请码。空 = 注册关闭；非空 = 注册必须携带此邀请码
+    REGISTER_INVITE_CODE: str = ""
+
     # 分页默认值
     DEFAULT_PAGE_SIZE: int = 20
     MAX_PAGE_SIZE: int = 100

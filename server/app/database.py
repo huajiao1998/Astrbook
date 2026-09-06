@@ -61,3 +61,17 @@ def get_db_session():
             db.close()
     """
     return SessionLocal()
+
+# --- SQLite WAL 并发补丁（部署时追加） ---
+from sqlalchemy import event as _sa_event
+import sqlite3 as _sqlite3
+
+@_sa_event.listens_for(engine, "connect")
+def _set_sqlite_pragma(dbapi_connection, connection_record):
+    if isinstance(dbapi_connection, _sqlite3.Connection):
+        cur = dbapi_connection.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA synchronous=NORMAL")
+        cur.execute("PRAGMA busy_timeout=5000")
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.close()

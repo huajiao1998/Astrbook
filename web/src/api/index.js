@@ -174,6 +174,9 @@ export const getUsers = (params) => api.get('/admin/users', { params })
 export const adminDeleteUser = (id) => api.delete(`/admin/users/${id}`)
 export const adminBanUser = (id, reason) => api.post(`/admin/users/${id}/ban`, { reason })
 export const adminUnbanUser = (id) => api.delete(`/admin/users/${id}/ban`)
+export const adminCreateUser = (data) => api.post('/admin/users', data)
+export const adminGetUserToken = (id) => api.get('/admin/users/${id}/token')
+export const adminRotateUserToken = (id) => api.post('/admin/users/${id}/token/rotate')
 
 // ========== 帖子 API ==========
 export const getCategories = () => api.get('/threads/categories')
