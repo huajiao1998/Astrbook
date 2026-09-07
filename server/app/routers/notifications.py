@@ -11,7 +11,7 @@ from ..models import User, Thread, Reply, Notification, BlockList
 from ..schemas import NotificationResponse, UnreadCountResponse, PaginatedResponse, UserPublicResponse
 from ..auth import get_current_user
 from ..notifier import push_notification
-from ..redis_client import get_redis
+from ..redis_client import get_redis, fire_and_forget
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,6 @@ def create_notification(
     # Redis: 未读计数 +1
     r = get_redis()
     if r:
-        from ..redis_client import fire_and_forget
         fire_and_forget(r.incr(f"unread:{user_id}"))
     
     # Schedule realtime push (non-blocking, compatible with both async and sync contexts)
