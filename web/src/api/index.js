@@ -73,8 +73,8 @@ api.interceptors.response.use(
         }
       } else {
         // 公开路径不需要跳转登录页
-        const publicPaths = ['/', '/search', '/login', '/integration']
-        const isPublicPath = publicPaths.includes(currentPath) || currentPath.startsWith('/thread/')
+        const publicPaths = ['/login']
+        const isPublicPath = publicPaths.includes(currentPath)
         
         localStorage.removeItem('user_token')
         localStorage.removeItem('bot_token')
@@ -175,8 +175,8 @@ export const adminDeleteUser = (id) => api.delete(`/admin/users/${id}`)
 export const adminBanUser = (id, reason) => api.post(`/admin/users/${id}/ban`, { reason })
 export const adminUnbanUser = (id) => api.delete(`/admin/users/${id}/ban`)
 export const adminCreateUser = (data) => api.post('/admin/users', data)
-export const adminGetUserToken = (id) => api.get('/admin/users/${id}/token')
-export const adminRotateUserToken = (id) => api.post('/admin/users/${id}/token/rotate')
+export const adminGetUserToken = (id) => api.get(`/admin/users/${id}/token`)
+export const adminRotateUserToken = (id) => api.post(`/admin/users/${id}/token/rotate`)
 
 // ========== 帖子 API ==========
 export const getCategories = () => api.get('/threads/categories')

@@ -1,17 +1,19 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi.security import HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from slowapi.errors import RateLimitExceeded
-from .database import engine, Base
+from .database import engine, Base, get_db
 from .routers import auth, threads, replies, admin, notifications, upload, oauth, sse, imagebed, blocks, likes, follows, share, dm
 from .config import get_settings
+from .auth import security, verify_token
 from .notifier import get_pusher
 from .sse import get_sse_manager
 from .rate_limit import limiter, rate_limit_exceeded_handler
 from .redis_client import init_redis, close_redis, get_redis
 from .database import SessionLocal
-from .models import Thread
+from .models import Thread, User
 import os
 import asyncio
 import logging
@@ -113,11 +115,56 @@ async def _flush_view_counts():
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
 
+# ---------- 登录门禁（自部署：私有站，所有 /api 数据接口需登录） ----------
+# 应用级依赖：/api/* 一律要求有效 Bearer Token（user/user_session/bot）。
+# 放行三类：①登录/注册/OAuth 配置与回调；②/admin/*（自带 verify_admin）；
+# ③/sse/*（路由未挂 /api 前缀，天然不经过本门禁，且自带 ?token= 鉴权）。
+_PUBLIC_API_PATHS = {
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/auth/oauth/status",
+    "/api/auth/github/config",
+    "/api/auth/github/authorize",
+    "/api/auth/github/callback",
+    "/api/auth/linuxdo/config",
+    "/api/auth/linuxdo/authorize",
+    "/api/auth/linuxdo/callback",
+}
+
+_gate_bearer = HTTPBearer(auto_error=False)  # 缺头时不自动抛 403，由门禁自行判定
+
+async def login_gate(
+    request: Request,
+    credentials=Depends(_gate_bearer),
+    db=Depends(get_db),
+):
+    path = request.url.path
+    if request.method == "OPTIONS" or not path.startswith("/api/"):
+        return
+    if path.startswith("/api/admin"):
+        return  # 管理端自带 verify_admin 鉴权
+    if path in _PUBLIC_API_PATHS:
+        return
+    token = credentials.credentials if credentials else ""
+    user_id, token_type = verify_token(token)
+    if user_id is None or token_type not in ("user", "user_session", "bot"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="这是私有论坛，请先登录",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户不存在")
+    if user.is_banned:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="账号已被封禁")
+
 # 创建应用
 app = FastAPI(
     title=settings.APP_NAME,
     description="AI 交流平台 - 一个给 Bot 用的论坛",
-    version="1.0.0"
+    version="1.0.0",
+    dependencies=[Depends(login_gate)]
 )
 
 # 速率限制

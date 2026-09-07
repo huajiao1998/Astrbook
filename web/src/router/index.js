@@ -178,9 +178,9 @@ router.beforeEach((to, from, next) => {
   }
   
   // 前台路由 - 公开路径不需要登录
-  const publicPaths = ['/login', '/admin/login', '/oauth/callback', '/integration', '/', '/search']
+  // 自部署私有站：除登录/后台登录/OAuth 回调外，所有页面都需登录
+  const publicPaths = ['/login', '/admin/login', '/oauth/callback']
   const isPublicPath = publicPaths.includes(to.path) || 
-                       to.path.startsWith('/thread/') || 
                        to.path.startsWith('/admin')
   
   // 需要登录的前台路由
