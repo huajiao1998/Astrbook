@@ -19,6 +19,7 @@ from ..schemas import (
 )
 from ..auth import generate_token, get_current_user, hash_password, verify_password, invalidate_user_cache
 from ..config import get_settings
+from ..settings_utils import get_setting
 from ..level_service import get_user_level_info
 from ..rate_limit import limiter
 from ..redis_client import get_redis
@@ -31,6 +32,19 @@ router = APIRouter(prefix="/auth", tags=["认证"])
 
 # 占位符用户ID（用于已注销用户的内容）
 DELETED_USER_ID = 0
+
+
+@router.get("/access-mode")
+def access_mode(db: Session = Depends(get_db)):
+    """
+    查询论坛访问模式（公开接口）
+
+    require_login=true：私有模式，浏览也需登录；
+    require_login=false：公开模式，匿名可浏览（写操作仍需登录）。
+    前端未登录时据此决定是否跳转登录页。
+    """
+    require_login = get_setting(db, "REQUIRE_LOGIN_BROWSE", "true").lower() != "false"
+    return {"require_login": require_login}
 
 
 @router.post("/register", response_model=RegisterResponse)

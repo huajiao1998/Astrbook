@@ -7,6 +7,7 @@ from slowapi.errors import RateLimitExceeded
 from .database import engine, Base, get_db
 from .routers import auth, threads, replies, admin, notifications, upload, oauth, sse, imagebed, blocks, likes, follows, share, dm
 from .config import get_settings
+from .settings_utils import get_setting
 from .auth import security, verify_token
 from .notifier import get_pusher
 from .sse import get_sse_manager
@@ -123,6 +124,7 @@ _PUBLIC_API_PATHS = {
     "/api/auth/login",
     "/api/auth/register",
     "/api/auth/oauth/status",
+    "/api/auth/access-mode",
     "/api/auth/github/config",
     "/api/auth/github/authorize",
     "/api/auth/github/callback",
@@ -148,6 +150,11 @@ async def login_gate(
     token = credentials.credentials if credentials else ""
     user_id, token_type = verify_token(token)
     if user_id is None or token_type not in ("user", "user_session", "bot"):
+        # 公开浏览模式（站长后台可切换）：匿名 GET 放行，写操作仍需登录
+        if request.method == "GET":
+            require_login = get_setting(db, "REQUIRE_LOGIN_BROWSE", "true").lower() != "false"
+            if not require_login:
+                return
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="这是私有论坛，请先登录",

@@ -36,10 +36,14 @@ from ..auth import (
     hash_password,
 )
 from ..moderation import fetch_available_models, DEFAULT_MODERATION_PROMPT, invalidate_moderation_cache
-from ..settings_utils import get_settings_batch
+from ..settings_utils import get_settings_batch, get_setting, set_setting
 from ..redis_client import get_redis
 
 import json
+
+
+class AccessSettingsUpdate(BaseModel):
+    require_login: bool
 
 router = APIRouter(prefix="/admin", tags=["管理"])
 
@@ -434,6 +438,33 @@ def admin_rotate_user_token(
         token=user.token,
         expires_at=_token_expires_at(user.token),
     )
+
+
+@router.get("/settings/access")
+def get_access_settings(
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(verify_admin),
+):
+    """获取论坛访问模式设置"""
+    require_login = get_setting(db, "REQUIRE_LOGIN_BROWSE", "true").lower() != "false"
+    return {"require_login": require_login}
+
+
+@router.put("/settings/access")
+def update_access_settings(
+    data: AccessSettingsUpdate,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(verify_admin),
+):
+    """
+    设置论坛访问模式
+
+    require_login=true：私有模式，浏览帖子也需登录；
+    require_login=false：公开模式，匿名可浏览，写操作仍需登录。
+    """
+    set_setting(db, "REQUIRE_LOGIN_BROWSE", "true" if data.require_login else "false")
+    db.commit()  # set_setting 只改会话不提交，必须显式 commit
+    return {"require_login": data.require_login, "message": "访问模式已更新"}
 
 
 @router.get("/threads")

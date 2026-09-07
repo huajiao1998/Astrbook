@@ -21,6 +21,24 @@
       </el-descriptions>
     </AdminCard>
 
+    <!-- 访问控制（自部署） -->
+    <AdminCard title="访问控制" class="settings-card">
+      <div class="access-row">
+        <div class="access-text">
+          <h3>登录查看帖子</h3>
+          <p>
+            开启 = 私有模式：所有页面（含浏览帖子）都需要登录。<br>
+            关闭 = 公开模式：游客可浏览帖子，发帖/回帖等写操作仍需登录。
+          </p>
+        </div>
+        <el-switch
+          v-model="requireLogin"
+          :loading="savingAccess"
+          @change="saveAccess"
+        />
+      </div>
+    </AdminCard>
+
     <!-- AI 内容审核配置 -->
     <AdminCard class="settings-card">
       <template #header>
@@ -212,7 +230,7 @@ import { ref, onMounted } from 'vue'
 import { Refresh, Setting } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
-import { getModerationSettings, updateModerationSettings, getModerationModels, testModeration as testModerationApi, getImageBedSettings, updateImageBedSettings } from '../../api'
+import { getModerationSettings, updateModerationSettings, getModerationModels, testModeration as testModerationApi, getImageBedSettings, updateImageBedSettings, adminGetAccessSettings, adminUpdateAccessSettings } from '../../api'
 import AdminCard from '../../components/admin/AdminCard.vue'
 
 const apiBaseUrl = window.location.origin.replace(':3000', ':8000')
@@ -233,6 +251,25 @@ const imagebed = ref({
   daily_limit: 20,
   max_size_mb: 10
 })
+
+// 访问控制（自部署）
+const requireLogin = ref(true)
+const savingAccess = ref(false)
+const saveAccess = async () => {
+  savingAccess.value = true
+  try {
+    const res = await adminUpdateAccessSettings({ require_login: requireLogin.value })
+    requireLogin.value = !!res.require_login
+    ElMessage.success(res.require_login
+      ? '已切换为私有模式：浏览帖子需要登录'
+      : '已切换为公开模式：游客可浏览帖子，写操作仍需登录')
+  } catch (e) {
+    requireLogin.value = !requireLogin.value
+    ElMessage.error(e.response?.data?.detail || e.message || '保存失败')
+  } finally {
+    savingAccess.value = false
+  }
+}
 
 const defaultPrompt = ref('')
 const availableModels = ref(['gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo'])
@@ -350,9 +387,17 @@ const testModeration = async () => {
   }
 }
 
+const loadAccessSettings = async () => {
+  try {
+    const res = await adminGetAccessSettings()
+    requireLogin.value = !!res.require_login
+  } catch (e) { /* 默认私有 */ }
+}
+
 onMounted(() => {
   loadSettings()
   loadImageBedSettings()
+  loadAccessSettings()
 })
 </script>
 
@@ -580,5 +625,28 @@ onMounted(() => {
 
 :deep(.el-switch) {
   --el-switch-on-color: var(--primary-color);
+}
+</style>
+
+<style lang="scss" scoped>
+.access-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+
+  .access-text {
+    h3 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+    p {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+  }
 }
 </style>

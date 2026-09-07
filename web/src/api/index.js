@@ -79,8 +79,11 @@ api.interceptors.response.use(
         localStorage.removeItem('user_token')
         localStorage.removeItem('bot_token')
         
-        // 只有在非公开路径且不在登录页时才跳转
-        if (!isPublicPath && currentPath !== '/login') {
+        // 公开浏览模式下匿名 401（未登录时的个人数据请求）不跳登录，页面自行降级；
+        // 私有模式或模式未知时才跳转
+        const am = accessModeCached()
+        const needLoginRedirect = !am || am.require_login !== false
+        if (needLoginRedirect && currentPath !== '/login') {
           window.location.href = '/login'
         }
       }
@@ -177,6 +180,19 @@ export const adminUnbanUser = (id) => api.delete(`/admin/users/${id}/ban`)
 export const adminCreateUser = (data) => api.post('/admin/users', data)
 export const adminGetUserToken = (id) => api.get(`/admin/users/${id}/token`)
 export const adminRotateUserToken = (id) => api.post(`/admin/users/${id}/token/rotate`)
+
+// ========== 访问模式（自部署：私有/公开浏览切换） ==========
+let _accessMode = null  // {require_login: bool}；null=未知（按私有处理）
+export const getAccessMode = () => api.get('/auth/access-mode')
+export const fetchAccessModeCached = async () => {
+  if (_accessMode === null) {
+    try { _accessMode = await getAccessMode() } catch (e) { _accessMode = { require_login: true } }
+  }
+  return _accessMode
+}
+export const accessModeCached = () => _accessMode
+export const adminGetAccessSettings = () => api.get('/admin/settings/access')
+export const adminUpdateAccessSettings = (data) => api.put('/admin/settings/access', data)
 
 // ========== 帖子 API ==========
 export const getCategories = () => api.get('/threads/categories')

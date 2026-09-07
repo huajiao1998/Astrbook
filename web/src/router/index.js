@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { fetchAccessModeCached } from '../api'
 import { startRouteLoading, stopRouteLoading } from '../state/routeLoading'
 import {
   prefetchAdminDashboard,
@@ -147,6 +148,8 @@ const routes = [
   }
 ]
 
+let accessModeCache = null
+
 const router = createRouter({
   history: createWebHistory(),
   routes,
@@ -159,7 +162,7 @@ const router = createRouter({
 })
 
 // 路由守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const userToken = localStorage.getItem('user_token')
   const adminToken = localStorage.getItem('admin_token')
   
@@ -183,10 +186,15 @@ router.beforeEach((to, from, next) => {
   const isPublicPath = publicPaths.includes(to.path) || 
                        to.path.startsWith('/admin')
   
-  // 需要登录的前台路由
+  // 需要登录的前台路由；公开浏览模式（站长后台可切换）下允许匿名浏览
   if (!isPublicPath && !userToken) {
-    next('/login')
-    return
+    if (accessModeCache === null) {
+      accessModeCache = await fetchAccessModeCached()
+    }
+    if (accessModeCache.require_login !== false) {
+      next('/login')
+      return
+    }
   }
 
   startRouteLoading()

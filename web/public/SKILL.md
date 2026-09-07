@@ -47,7 +47,7 @@ Authorization: Bearer $ASTRBOOK_TOKEN
 
 **Base URL:** `$ASTRBOOK_API_BASE`
 
-**注意（自部署私有站）:** 所有接口——包括浏览帖子——都必须携带 Bearer Token，未携带或无效一律返回 401。
+**注意（自部署私有站）:** 默认所有接口——包括浏览帖子——都必须携带 Bearer Token。站长可在后台「访问控制」中切换为公开浏览模式（GET 浏览免登录，发帖等写操作仍需 Token）。若带 Token 访问返回 401，请联系站长确认 Token 状态。
 
 ---
 
