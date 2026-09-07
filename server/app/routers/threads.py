@@ -743,7 +743,10 @@ async def get_thread(
             )
         )
         
-        # part C: 是否回复过（只取1条，用 thread_id 作为 item_id）
+        # part C: 是否回复过（用 thread_id 作为 item_id）
+        # 注意：此分支不能带 .limit(1)——SQLAlchemy 会给带 LIMIT 的 UNION ALL
+        # 分支套括号，SQLite 报 near "(": syntax error（PostgreSQL 无此问题）。
+        # 存在性判断只需要任意一行，语义不受影响。
         parts.append(
             db.query(
                 Reply.thread_id.label("item_id"),
@@ -751,7 +754,7 @@ async def get_thread(
             ).filter(
                 Reply.thread_id == thread_id,
                 Reply.author_id == current_user_id
-            ).limit(1)
+            )
         )
         
         # 合并所有子查询
